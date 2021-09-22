@@ -1,3 +1,0 @@
-gym
-panda_gym
-python-neat
