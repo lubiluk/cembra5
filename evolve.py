@@ -83,8 +83,8 @@ def evaluate(genome, env, render=False):
 
 def mutate(genome):
     copy = genome.clone()
-    mutation_prob = 0.2
-    mutation_mag = 0.2
+    mutation_prob = 0.02
+    mutation_mag = 0.02
     indxs = torch.rand_like(copy) < mutation_prob
     copy[indxs] += (
         copy[indxs] * (torch.rand_like(copy[indxs]) * 2 - 1) * mutation_mag
