@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 import torch.functional as F
 import torchvision.transforms as transforms
+import cma
+import numpy as np
+import time
+import os
+
+MAX_INT = (1 << 31) - 1
 
 
 class SelfAttention(nn.Module):
@@ -107,7 +113,7 @@ class LSTMStack(nn.Module):
         )
 
 
-class Model:
+class MLPSolution:
     """Model with an underlying MLP or LSTM"""
 
     def __init__(
@@ -141,7 +147,7 @@ class Model:
                 num_units=num_hiddens,
                 activation=activation,
             )
-        self._layers = self._fc_stack.layers
+        self._layers = self._fc_stack._layers
 
     def output(self, inputs):
         with torch.no_grad():
@@ -163,7 +169,7 @@ class Model:
             self._fc_stack.reset()
 
 
-class Agent:
+class Solution:
     def __init__(
         self,
         image_size,
@@ -180,6 +186,7 @@ class Agent:
         normalize_positions=False,
         use_lstm_controller=False,
     ):
+        self._layers = []
         self._image_size = image_size
         self._patch_size = patch_size
         self._patch_stride = patch_stride
@@ -201,8 +208,9 @@ class Agent:
             data_dim=data_dim * self._patch_size ** 2,
             dim_q=query_dim,
         )
+        self._layers.extend(self._attention._layers)
 
-        self._model = Model(
+        self._model = MLPSolution(
             input_dim=self._top_k * 2,
             num_hiddens=num_hiddens,
             activation=activation,
@@ -211,17 +219,18 @@ class Agent:
             l2_coefficient=l2_coefficient,
             use_lstm=use_lstm_controller,
         )
+        self._layers.extend(self._model._layers)
 
     def _patch_centers(self):
         """Determines centers of patches based on image_size, patch_size and patch_stride"""
         # Images are squares, so patch rows == cols
-        n = int((self.image_size - self.patch_size) / self.patch_stride + 1)
+        n = int((self._image_size - self._patch_size) / self._patch_stride + 1)
         offset = self._patch_size // 2  # Floor division
         patch_centers = []
         for i in range(n):
-            patch_center_row = offset + i * self.patch_stride
+            patch_center_row = offset + i * self._patch_stride
             for j in range(n):
-                patch_center_col = offset + j * self.patch_stride
+                patch_center_col = offset + j * self._patch_stride
                 patch_centers.append([patch_center_row, patch_center_col])
         return torch.tensor(patch_centers).float()
 
@@ -231,7 +240,9 @@ class Agent:
             ob = self._transform(inputs).permute(1, 2, 0)
             # print(ob.shape)
             h, w, c = ob.size()
-            patches = ob.unfold(0, self._patch_size, self._patch_stride).permute(0, 3, 1, 2)
+            patches = ob.unfold(0, self._patch_size, self._patch_stride).permute(
+                0, 3, 1, 2
+            )
             patches = patches.unfold(2, self._patch_size, self._patch_stride).permute(
                 0, 2, 1, 4, 3
             )
@@ -255,11 +266,448 @@ class Agent:
             if self._normalize_positions:
                 centers = centers / self._image_size
 
-            return self._model.get_output(centers)
+            return self._model.output(centers)
 
     def reset(self):
         self._model.reset()
 
+    def get_params(self):
+        params = []
+        for layer in self._layers:
+            weight_dict = layer.state_dict()
+            for k in sorted(weight_dict.keys()):
+                params.append(weight_dict[k].numpy().copy().ravel())
+        return np.concatenate(params)
+
+    def set_params(self, params):
+        offset = 0
+        for i, layer in enumerate(self._layers):
+            weights_to_set = {}
+            weight_dict = layer.state_dict()
+            for k in sorted(weight_dict.keys()):
+                weight = weight_dict[k].numpy()
+                weight_size = weight.size
+                weights_to_set[k] = torch.from_numpy(
+                    params[offset:(offset + weight_size)].reshape(weight.shape))
+                offset += weight_size
+            self._layers[i].load_state_dict(state_dict=weights_to_set)
+
+    def get_params_from_layer(self, layer_index):
+        params = []
+        layer = self._layers[layer_index]
+        weight_dict = layer.state_dict()
+        for k in sorted(weight_dict.keys()):
+            params.append(weight_dict[k].numpy().copy().ravel())
+        return np.concatenate(params)
+
+    def set_params_to_layer(self, params, layer_index):
+        weights_to_set = {}
+        weight_dict = self._layers[layer_index].state_dict()
+        offset = 0
+        for k in sorted(weight_dict.keys()):
+            weight = weight_dict[k].numpy()
+            weight_size = weight.size
+            weights_to_set[k] = torch.from_numpy(
+                params[offset:(offset + weight_size)].reshape(weight.shape))
+            offset += weight_size
+        self._layers[layer_index].load_state_dict(state_dict=weights_to_set)
+
+    def get_num_params_per_layer(self):
+        num_params_per_layer = []
+        for layer in self._layers:
+            weight_dict = layer.state_dict()
+            num_params = 0
+            for k in sorted(weight_dict.keys()):
+                weights = weight_dict[k].numpy()
+                num_params += weights.size
+            num_params_per_layer.append(num_params)
+        return num_params_per_layer
+
+    def _save_to_file(self, filename):
+        params = self.get_params()
+        np.savez(filename, params=params)
+
+    def save(self, log_dir, iter_count, best_so_far):
+        filename = os.path.join(log_dir, 'model_{}.npz'.format(iter_count))
+        self._save_to_file(filename=filename)
+        if best_so_far:
+            filename = os.path.join(log_dir, 'best_model.npz')
+            self._save_to_file(filename=filename)
+
+    def load(self, filename):
+        with np.load(filename) as data:
+            params = data['params']
+            self.set_params(params)
+
+
+class GymTask:
+    """OpenAI gym tasks."""
+
+    def __init__(self):
+        self._env = None
+        self._render = False
+        self._logger = None
+
+    def create_task(self, **kwargs):
+        raise NotImplementedError()
+
+    def seed(self, seed):
+        self._env.seed(int(seed))
+
+    def reset(self):
+        return self._env.reset()
+
+    def step(self, action, evaluate):
+        return self._env.step(action)
+
+    def close(self):
+        self._env.close()
+
+    def _process_reward(self, reward, done, evaluate):
+        return reward
+
+    def _process_action(self, action):
+        return action
+
+    def _process_observation(self, observation):
+        return observation
+
+    def _overwrite_terminate_flag(self, reward, done, step_cnt, evaluate):
+        return done
+
+    def _show_gui(self):
+        if hasattr(self._env, "render"):
+            self._env.render()
+
+    def roll_out(self, solution, evaluate):
+        ob = self.reset()
+        ob = self._process_observation(ob)
+        if hasattr(solution, "reset"):
+            solution.reset()
+
+        start_time = time.time()
+
+        rewards = []
+        done = False
+        step_cnt = 0
+        while not done:
+            action = solution.get_output(inputs=ob)
+            action = self._process_action(action)
+            ob, r, done, _ = self.step(action, evaluate)
+            ob = self._process_observation(ob)
+
+            if self._render:
+                self._show_gui()
+
+            step_cnt += 1
+            done = self._overwrite_terminate_flag(r, done, step_cnt, evaluate)
+            step_reward = self._process_reward(r, done, evaluate)
+            rewards.append(step_reward)
+
+        time_cost = time.time() - start_time
+        actual_reward = np.sum(rewards)
+        if hasattr(self, "_logger") and self._logger is not None:
+            self._logger.info(
+                "Roll-out time={0:.2f}s, steps={1}, reward={2:.2f}".format(
+                    time_cost, step_cnt, actual_reward
+                )
+            )
+
+        return actual_reward
+
+
+class CarRacingTask(GymTask):
+    """Gym CarRacing-v0 task."""
+
+    def __init__(self):
+        super(CarRacingTask, self).__init__()
+        self._max_steps = 0
+        self._neg_reward_cnt = 0
+        self._neg_reward_cap = 0
+        self._action_high = np.array([1.0, 1.0, 1.0])
+        self._action_low = np.array([-1.0, 0.0, 0.0])
+
+    def _process_action(self, action):
+        return (
+            action * (self._action_high - self._action_low) / 2.0
+            + (self._action_high + self._action_low) / 2.0
+        )
+
+    def reset(self):
+        ob = super(CarRacingTask, self).reset()
+        self._neg_reward_cnt = 0
+        return ob
+
+    def _overwrite_terminate_flag(self, reward, done, step_cnt, evaluate):
+        if evaluate:
+            return done
+        if reward < 0:
+            self._neg_reward_cnt += 1
+        else:
+            self._neg_reward_cnt = 0
+        too_many_out_of_tracks = 0 < self._neg_reward_cap < self._neg_reward_cnt
+        too_many_steps = 0 < self._max_steps <= step_cnt
+        return done or too_many_out_of_tracks or too_many_steps
+
+    def create_task(self, **kwargs):
+        self._env = gym.make("CarRacing-v0")
+        if "render" in kwargs:
+            self._render = kwargs["render"]
+        if "out_of_track_cap" in kwargs:
+            self._neg_reward_cap = kwargs["out_of_track_cap"]
+        if "max_steps" in kwargs:
+            self._max_steps = kwargs["max_steps"]
+        if "logger" in kwargs:
+            self._logger = kwargs["logger"]
+        return self
+
+    def set_video_dir(self, video_dir):
+        from gym.wrappers import Monitor
+
+        self._env = Monitor(
+            env=self._env, directory=video_dir, video_callable=lambda x: True
+        )
+
+
+def evaluate(request, solution, task):
+    params = np.asarray(request["parameters"])
+    solution.set_params(params)
+    task.seed(request["env_seed"])
+    score = task.roll_out(solution, request["evaluate"])
+    penalty = 0 if request["evaluate"] else solution.get_l2_penalty()
+    return score - penalty
+
+
+class CMA:
+    """CMA algorithm."""
+
+    def __init__(self, seed, population_size, init_sigma, init_params):
+        """Create a wrapper of cmapy."""
+
+        self._algorithm = cma.CMAEvolutionStrategy(
+            x0=init_params,
+            sigma0=init_sigma,
+            inopts={
+                "popsize": population_size,
+                "seed": seed if seed > 0 else 42,  # ignored if seed is 0
+                "randn": np.random.randn,
+            },
+        )
+        self._population = None
+
+    def get_population(self):
+        self._population = self._algorithm.ask()
+        return self._population
+
+    def evolve(self, fitness):
+        self._algorithm.tell(self._population, -fitness)
+
+    def get_current_parameters(self):
+        return self._algorithm.result.xfavorite
+
+
+class ESMaster:
+    """Base ES master."""
+
+    def __init__(
+        self,
+        task,
+        solution,
+        population_size,
+        init_sigma,
+        seed,
+        n_repeat,
+        max_iter,
+        eval_every_n_iter,
+        n_eval_roll_outs,
+    ):
+        """Initialization."""
+
+        self._n_repeat = n_repeat
+        self._max_iter = max_iter
+        self._eval_every_n_iter = eval_every_n_iter
+        self._n_eval_roll_outs = n_eval_roll_outs
+        self._task = task
+        self._solution = solution
+        self._rnd = np.random.RandomState(seed=seed)
+        self._algorithm = CMA(
+            population_size=population_size,
+            init_sigma=init_sigma,
+            seed=seed,
+            init_params=self._solution.get_params(),
+        )
+
+    def train(self):
+        """Train for max_iter iterations."""
+
+        # Evaluate before train.
+        eval_scores = self._evaluate()
+
+        print(
+            (
+                "TEST Iter 0: size(scores)={0}, "
+                "max(scores)={1:.2f}, "
+                "mean(scores)={2:.2f}, "
+                "min(scores)={3:.2f}, "
+                "sd(scores)={4:.2f}".format(
+                    eval_scores.size,
+                    np.max(eval_scores),
+                    np.mean(eval_scores),
+                    np.min(eval_scores),
+                    np.std(eval_scores),
+                )
+            )
+        )
+
+        best_eval_score = -float("Inf")
+
+        print("Start training for {} iterations.".format(self._max_iter))
+
+        for iter_cnt in range(self._max_iter):
+            # Training.
+            start_time = time.time()
+            scores = self._train_once()
+            time_cost = time.time() - start_time
+            print("1-step training time: {}s".format(time_cost))
+
+            print(
+                "Iter {0}: size(scores)={1}, "
+                "max(scores)={2:.2f}, "
+                "mean(scores)={3:.2f}, "
+                "min(scores)={4:.2f}, "
+                "sd(scores)={5:.2f}".format(
+                    iter_cnt + 1,
+                    scores.size,
+                    np.max(scores),
+                    np.mean(scores),
+                    np.min(scores),
+                    np.std(scores),
+                )
+            )
+
+            # Evaluate periodically.
+            if (iter_cnt + 1) % self._eval_every_n_iter == 0:
+                # Evaluate.
+                start_time = time.time()
+                eval_scores = self._evaluate()
+                time_cost = time.time() - start_time
+                print("Evaluation time: {}s".format(time_cost))
+
+                # Record results and save the model.
+                mean_score = eval_scores.mean()
+                if mean_score > best_eval_score:
+                    best_eval_score = mean_score
+                    best_so_far = True
+                else:
+                    best_so_far = False
+
+                print(
+                    "TEST Iter {0}: size(scores)={1}, "
+                    "max(scores)={2:.2f}, "
+                    "mean(scores)={3:.2f}, "
+                    "min(scores)={4:.2f}, "
+                    "sd(scores)={5:.2f}".format(
+                        iter_cnt + 1,
+                        scores.size,
+                        np.max(scores),
+                        np.mean(scores),
+                        np.min(scores),
+                        np.std(scores),
+                    )
+                )
+
+                self._save_solution(iter_count=iter_cnt + 1, best_so_far=best_so_far)
+
+    def _evaluate(self):
+        if self._algorithm is None:
+            raise NotImplementedError()
+
+        requests = self._create_requests(evaluate=True)
+        fitness = np.array([evaluate(r, self._solution, self._task) for r in requests])
+        return fitness
+
+    def _train_once(self):
+        if self._algorithm is None:
+            raise NotImplementedError()
+
+        requests = self._create_requests(evaluate=False)
+
+        fitness = np.array([evaluate(r, self._solution, self._task) for r in requests])
+        fitness = fitness.reshape([-1, self._n_repeat]).mean(axis=1)
+        self._algorithm.evolve(fitness)
+
+        return fitness
+
+    def _save_solution(self, iter_count, best_so_far):
+        if self._algorithm is None:
+            raise NotImplementedError()
+        self._update_solution()
+        self._solution.save(self._log_dir, iter_count, best_so_far)
+
+    def _create_requests(self, evaluate):
+        """Create requests."""
+
+        if evaluate:
+            n_repeat = 1
+            num_roll_outs = self._n_eval_roll_outs
+            params_list = [self._algorithm.get_current_parameters()]
+        else:
+            n_repeat = self._n_repeat
+            params_list = self._algorithm.get_population()
+            num_roll_outs = len(params_list) * n_repeat
+
+        env_seed_list = self._rnd.randint(low=0, high=MAX_INT, size=num_roll_outs)
+
+        requests = []
+        for i, env_seed in enumerate(env_seed_list):
+            ix = 0 if evaluate else i // n_repeat
+            requests.append(
+                dict(
+                    roll_out_index=i,
+                    env_seed=env_seed,
+                    parameters=params_list[ix],
+                    evaluate=evaluate,
+                )
+            )
+        return requests
+
+    def _update_solution(self):
+        if self._algorithm is None:
+            raise NotImplementedError()
+        self._solution.set_params(self._algorithm.get_current_parameters())
+
 
 if __name__ == "__main__":
-    env = gym.make("CarRacing-v0")
+    task = CarRacingTask()
+    task.create_task(**dict(out_of_track_cap=20, max_steps=1000, render=True))
+    solution = Solution(
+        image_size=96,
+        query_dim=4,
+        output_dim=3,
+        output_activation="tanh",
+        num_hiddens=[
+            16,
+        ],
+        l2_coefficient=0,
+        patch_size=7,
+        patch_stride=4,
+        top_k=10,
+        data_dim=3,
+        activation="tanh",
+        normalize_positions=True,
+        use_lstm_controller=True,
+    )
+    master = ESMaster(
+        task=task,
+        solution=solution,
+        population_size=256,
+        init_sigma=0.1,
+        seed=0,
+        n_repeat=16,
+        max_iter=2000,
+        eval_every_n_iter=10,
+        n_eval_roll_outs=100,
+    )
+
+    print("Start to train.")
+    master.train()
