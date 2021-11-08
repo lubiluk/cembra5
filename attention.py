@@ -339,6 +339,12 @@ class Solution:
             params = data['params']
             self.set_params(params)
 
+    def get_l2_penalty(self):
+        if not hasattr(self, '_l2_coefficient'):
+            raise ValueError('l2_coefficient not specified.')
+        params = self.get_params()
+        return self._l2_coefficient * np.sum(params ** 2)
+
 
 class GymTask:
     """OpenAI gym tasks."""
@@ -623,8 +629,15 @@ class ESMaster:
             raise NotImplementedError()
 
         requests = self._create_requests(evaluate=True)
-        fitness = np.array([evaluate(r, self._solution, self._task) for r in requests])
-        return fitness
+
+        fitness = []
+
+        for r in requests:
+            f = evaluate(r, self._solution, self._task)
+            fitness.append(f)
+
+        # fitness = np.array([evaluate(r, self._solution, self._task) for r in requests])
+        return np.array(fitness)
 
     def _train_once(self):
         if self._algorithm is None:
@@ -679,7 +692,7 @@ class ESMaster:
 
 if __name__ == "__main__":
     task = CarRacingTask()
-    task.create_task(**dict(out_of_track_cap=20, max_steps=1000, render=True))
+    task.create_task(**dict(out_of_track_cap=20, max_steps=1000, render=False))
     solution = Solution(
         image_size=96,
         query_dim=4,
@@ -706,8 +719,9 @@ if __name__ == "__main__":
         n_repeat=16,
         max_iter=2000,
         eval_every_n_iter=10,
-        n_eval_roll_outs=100,
+        n_eval_roll_outs=2,
     )
 
     print("Start to train.")
     master.train()
+    print("Done")
