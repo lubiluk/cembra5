@@ -45,7 +45,7 @@ class Model(nn.Module):
 
     def genotype(self, g=None):
         if g is not None:
-            params = torch.clone(g)
+            params = torch.clone(torch.from_numpy(g))
 
             for layer in self.net:
                 if not isinstance(layer, nn.Linear):
@@ -58,10 +58,10 @@ class Model(nn.Module):
 
                 w = params[:w_shape_flat]
                 params = params[w_shape_flat:]
-                layer.weight.data = w.reshape(w_shape)
+                layer.weight.data = w.reshape(w_shape).float()
                 b = params[:b_shape_flat]
                 params = params[b_shape_flat:]
-                layer.bias.data = b
+                layer.bias.data = b.float()
         else:
             params = torch.tensor([])
             for layer in self.net:
@@ -76,14 +76,37 @@ class Model(nn.Module):
             return params
 
 
-if __name__ == "__main__":
-    env = make_env()
-    obs_dim = env.observation_space.shape[0]
-    act_dim = env.action_space.shape[0]
-    act_limit = env.action_space.high[0]
+class Evaluator:
+    def __init__(self) -> None:
+        self.env = make_env()
+        obs_dim = self.env.observation_space.shape[0]
+        act_dim = self.env.action_space.shape[0]
+        act_limit = self.env.action_space.high[0]
+        self.model = Model(
+            input_dim=obs_dim,
+            hidden_sizes=[32,32],
+            out_dim=act_dim,
+            activation=nn.ReLU,
+            act_limit=act_limit)
 
-    model = Model(1, [32, 32], act_dim, nn.ReLU, act_limit)
-    print(model.net)
-    params = model.genotype()
-    model.genotype(torch.zeros_like(params))
-    print(model.genotype())
+    def evaluate(self, genotype):
+        self.model.genotype(genotype)
+        rets = []
+        for _ in range(10):
+            obs = self.env.reset()
+            done = False
+            ret = 0
+            while not done:
+                action = self.model.forward(torch.from_numpy(obs)).numpy()
+                obs, rew, done, _ = self.env.step(action)
+                ret += rew
+            rets.append(ret)
+
+        return -(sum(rets) / len(rets))
+
+
+if __name__ == "__main__":
+    with torch.no_grad():
+        eval = Evaluator()
+        genome = torch.zeros_like(eval.model.genotype())
+        xopt, es = cma.fmin2(eval.evaluate, genome.numpy(), 0.5)
