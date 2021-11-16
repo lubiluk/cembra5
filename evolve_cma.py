@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 import cma
+import sys
+import subprocess
 
 
 from wrappers import DoneOnSuccessWrapper
@@ -106,6 +108,10 @@ class Evaluator:
 
 
 if __name__ == "__main__":
+    if 'darwin' in sys.platform:
+        print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
+        subprocess.Popen('caffeinate')
+
     with torch.no_grad():
         eval = Evaluator()
         genome = torch.zeros_like(eval.model.genotype())
