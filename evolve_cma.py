@@ -1,6 +1,3 @@
-import gym
-from gym.envs.registration import make
-import panda_gym
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,20 +6,12 @@ import torchvision.transforms as transforms
 import cma
 import sys
 import subprocess
-
+import ray
+from ray.tune.registry import register_env
 
 from wrappers import DoneOnSuccessWrapper
 from gym.wrappers.flatten_observation import FlattenObservation
 from gym.wrappers.filter_observation import FilterObservation
-
-
-def make_env():
-    return FlattenObservation(
-        FilterObservation(
-            DoneOnSuccessWrapper(gym.make("PandaReachDense-v1"), reward_offset=0),
-            filter_keys=["observation", "desired_goal"],
-        )
-    )
 
 
 class Model(nn.Module):
@@ -78,8 +67,21 @@ class Model(nn.Module):
             return params
 
 
+@ray.remote
 class Evaluator:
     def __init__(self) -> None:
+        import gym
+        from gym.envs.registration import make
+        import panda_gym
+
+        def make_env():
+            return FlattenObservation(
+                FilterObservation(
+                    DoneOnSuccessWrapper(gym.make("PandaReachDense-v1"), reward_offset=0),
+                    filter_keys=["observation", "desired_goal"],
+                )
+            )
+
         self.env = make_env()
         obs_dim = self.env.observation_space.shape[0]
         act_dim = self.env.action_space.shape[0]
@@ -92,19 +94,23 @@ class Evaluator:
             act_limit=act_limit)
 
     def evaluate(self, genotype):
-        self.model.genotype(genotype)
-        rets = []
-        for _ in range(10):
-            obs = self.env.reset()
-            done = False
-            ret = 0
-            while not done:
-                action = self.model.forward(torch.from_numpy(obs)).numpy()
-                obs, rew, done, _ = self.env.step(action)
-                ret += rew
-            rets.append(ret)
+        with torch.no_grad():
+            self.model.genotype(genotype)
+            rets = []
+            for _ in range(10):
+                obs = self.env.reset()
+                done = False
+                ret = 0
+                while not done:
+                    action = self.model.forward(torch.from_numpy(obs)).numpy()
+                    obs, rew, done, _ = self.env.step(action)
+                    ret += rew
+                rets.append(ret)
 
-        return -(sum(rets) / len(rets))
+            return -(sum(rets) / len(rets))
+
+    def genome_shape(self):
+        return self.model.genotype().shape
 
 
 if __name__ == "__main__":
@@ -113,19 +119,26 @@ if __name__ == "__main__":
         subprocess.Popen('caffeinate')
 
     with torch.no_grad():
-        eval = Evaluator()
-        genome = torch.zeros_like(eval.model.genotype())
+        eval = Evaluator.remote()
+        genome_shape = ray.get(eval.genome_shape.remote())
+        genome = torch.zeros(genome_shape)
+        del eval
 
         es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
 
+        eval_pool = [Evaluator.remote() for _ in range(4)]
+
         while not es.stop():
             genotype = es.ask()
-            fitness = []
+            fitness_remotes = []
 
-            for g in genotype:
-                fit = eval.evaluate(g)
-                fitness.append(fit)
-                es.logger.add()
-                es.disp()
+            for i, g in enumerate(genotype):
+                fr = eval_pool[i % len(eval_pool)].evaluate.remote(g)
+                fitness_remotes.append(fr)
+
+            fitness = ray.get(fitness_remotes)
+            es.tell(genotype, fitness)
+            es.logger.add()
+            es.disp()
 
         es.result_pretty()
