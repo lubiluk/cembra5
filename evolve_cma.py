@@ -7,12 +7,11 @@ import cma
 import sys
 import subprocess
 import ray
-from ray.tune.registry import register_env
+from multiprocessing import cpu_count
 
 from wrappers import DoneOnSuccessWrapper
 from gym.wrappers.flatten_observation import FlattenObservation
 from gym.wrappers.filter_observation import FilterObservation
-
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -126,7 +125,8 @@ if __name__ == "__main__":
 
         es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
 
-        eval_pool = [Evaluator.remote() for _ in range(4)]
+        num_cpu = cpu_count()
+        eval_pool = [Evaluator.remote() for _ in range(num_cpu)]
 
         while not es.stop():
             genotype = es.ask()
