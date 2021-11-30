@@ -115,4 +115,17 @@ if __name__ == "__main__":
     with torch.no_grad():
         eval = Evaluator()
         genome = torch.zeros_like(eval.model.genotype())
-        xopt, es = cma.fmin2(eval.evaluate, genome.numpy(), 0.5)
+
+        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
+
+        while not es.stop():
+            genotype = es.ask()
+            fitness = []
+
+            for g in genotype:
+                fit = eval.evaluate(g)
+                fitness.append(fit)
+                es.logger.add()
+                es.disp()
+
+        es.result_pretty()
