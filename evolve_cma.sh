@@ -51,4 +51,4 @@ for ((i = 1; i <= worker_num; i++)); do
     sleep 5
 done
 
-python hpc_test.py
+python evolve_cma.py
