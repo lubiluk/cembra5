@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=hpc-test
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=24
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1GB
 
-module load plgrid/tools/python
+module load plgrid/tools/python/3.9
 source venv/bin/activate
 
 # Getting the node names
@@ -36,7 +36,7 @@ echo "IP Head: $ip_head"
 echo "Starting HEAD at $head_node"
 srun --nodes=1 --ntasks=1 -w "$head_node" \
     ray start --head --node-ip-address="$head_node_ip" --port=$port \
-    --num-cpus "${SLURM_CPUS_PER_TASK}"--block --temp-dir=${SCRATCH}/tmp-ray &
+    --num-cpus "${SLURM_CPUS_PER_TASK}" --block --temp-dir=${SCRATCH}/tmp-ray &
 
 
 # number of nodes other than the head node
@@ -47,7 +47,7 @@ for ((i = 1; i <= worker_num; i++)); do
     echo "Starting WORKER $i at $node_i"
     srun --nodes=1 --ntasks=1 -w "$node_i" \
         ray start --address "$ip_head" \
-        --num-cpus "${SLURM_CPUS_PER_TASK}"--block --temp-dir=${SCRATCH}/tmp-ray &
+        --num-cpus "${SLURM_CPUS_PER_TASK}" --block --temp-dir=${SCRATCH}/tmp-ray &
     sleep 5
 done
 

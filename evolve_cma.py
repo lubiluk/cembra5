@@ -123,7 +123,7 @@ if __name__ == "__main__":
         genome = torch.zeros(genome_shape)
         del eval
 
-        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
+        es = cma.CMAEvolutionStrategy(genome.numpy())
 
         num_cpu = cpu_count()
         eval_pool = [Evaluator.remote() for _ in range(num_cpu)]
