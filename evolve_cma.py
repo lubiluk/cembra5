@@ -7,6 +7,7 @@ import cma
 import sys
 import subprocess
 import ray
+import os
 from multiprocessing import cpu_count
 
 from wrappers import DoneOnSuccessWrapper
@@ -117,6 +118,12 @@ if __name__ == "__main__":
         print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
         subprocess.Popen('caffeinate')
 
+    ray.init(address=os.environ["ip_head"])
+
+    print("Nodes in the Ray cluster:")
+    print(ray.nodes())
+    print("----------------")
+
     with torch.no_grad():
         eval = Evaluator.remote()
         genome_shape = ray.get(eval.genome_shape.remote())
@@ -125,7 +132,7 @@ if __name__ == "__main__":
 
         es = cma.CMAEvolutionStrategy(genome.numpy())
 
-        num_cpu = cpu_count()
+        num_cpu = 96 # cpu_count()
         eval_pool = [Evaluator.remote() for _ in range(num_cpu)]
 
         while not es.stop():

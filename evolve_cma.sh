@@ -2,8 +2,8 @@
 #SBATCH --job-name=hpc-test
 #SBATCH --nodes=4
 #SBATCH --exclusive
-#SBATCH --tasks-per-node=24
-#SBATCH --cpus-per-task=1
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=24
 #SBATCH --mem-per-cpu=1GB
 
 module load plgrid/tools/python/3.9
