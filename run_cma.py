@@ -14,7 +14,7 @@ from wrappers import DoneOnSuccessWrapper
 def make_env():
     return FlattenObservation(
         FilterObservation(
-            DoneOnSuccessWrapper(gym.make("PandaReachDense-v1", render=True), reward_offset=0),
+            DoneOnSuccessWrapper(gym.make("PandaReachDense-v2", render=True), reward_offset=0),
             filter_keys=["observation", "desired_goal"],
         )
     )

@@ -77,7 +77,7 @@ class Evaluator:
         def make_env():
             return FlattenObservation(
                 FilterObservation(
-                    DoneOnSuccessWrapper(gym.make("PandaReachDense-v1"), reward_offset=0),
+                    DoneOnSuccessWrapper(gym.make("PandaReachDense-v2"), reward_offset=0),
                     filter_keys=["observation", "desired_goal"],
                 )
             )
