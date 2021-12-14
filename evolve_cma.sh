@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=hpc-test
+#SBATCH --job-name=evolve-cma
 #SBATCH --nodes=4
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=1
