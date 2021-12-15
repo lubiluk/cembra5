@@ -8,6 +8,9 @@ print("Nodes in the Ray cluster:")
 print(ray.nodes())
 print("----------------")
 
+print("All resources:")
+print(ray.global_state.cluster_resources())
+
 
 @ray.remote
 def evaluate(x):
