@@ -5,12 +5,16 @@ import os
 import pickle
 
 import neat
+import numpy as np
 import ray
+from gym.wrappers.filter_observation import FilterObservation
+from gym.wrappers.flatten_observation import FlattenObservation
 from ray.util import ActorPool
 
 import visualize
+from wrappers import DoneOnSuccessWrapper
 
-runs_per_net = 5
+runs_per_net = 10
 
 ray.init(address=os.environ.get("ip_head"))
 
@@ -23,11 +27,20 @@ print("----------------")
 class Evaluator:
     def __init__(self) -> None:
         import gym
+        import panda_gym
 
         def make_env():
-            return gym.make("CartPole-v0")
+            return FlattenObservation(
+                FilterObservation(
+                    DoneOnSuccessWrapper(
+                        gym.make("PandaReachDense-v2"), reward_offset=0
+                    ),
+                    filter_keys=["observation", "desired_goal"],
+                )
+            )
 
         self.env = make_env()
+        self.act_limit = self.env.action_space.high[0]
 
     def evaluate(self, genome, config):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -39,8 +52,8 @@ class Evaluator:
             obs = self.env.reset()
 
             while not done:
-                prob = net.activate(obs)[0]
-                act = 0 if prob < 0.5 else 1
+                act = net.activate(obs)
+                act = np.tanh(act) * self.act_limit
                 obs, rew, done, info = self.env.step(act)
                 fitness += rew
 
@@ -49,35 +62,14 @@ class Evaluator:
         return min(fitnesses)
 
 
-# def eval_genome(genome, config):
-#     net = neat.nn.FeedForwardNetwork.create(genome, config)
-
-#     fitnesses = []
-
-#     for runs in range(runs_per_net):
-#         fitness = 0.0
-#         done = False
-#         env = gym.make("CartPole-v0")
-#         obs = env.reset()
-
-#         while not done:
-#             prob = net.activate(obs)[0]
-#             act = 0 if prob < 0.5 else 1
-#             obs, rew, done, info = env.step(act)
-#             fitness += rew
-
-#         fitnesses.append(fitness)
-
-#     return min(fitnesses)
-
-
 num_cpu = int(ray.cluster_resources()["CPU"])
 pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
+
 
 def eval_genomes(genomes, config):
     genlist = [g for _, g in genomes]
     fits = list(pool.map(lambda a, v: a.evaluate.remote(v, config), genlist))
-    
+
     for i in range(len(genlist)):
         genlist[i].fitness = fits[i]
 

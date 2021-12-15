@@ -4,14 +4,14 @@
 # or the experiment itself.  This is the only required section.
 [NEAT]
 fitness_criterion     = max
-fitness_threshold     = 195.0
+fitness_threshold     = -0.4
 pop_size              = 250
 reset_on_extinction   = 0
 
 [DefaultGenome]
-num_inputs              = 4
+num_inputs              = 9
 num_hidden              = 1
-num_outputs             = 1
+num_outputs             = 3
 initial_connection      = partial_direct 0.5
 feed_forward            = True
 compatibility_disjoint_coefficient    = 1.0
