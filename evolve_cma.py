@@ -1,16 +1,18 @@
+import os
+import subprocess
+import sys
+
+import cma
 import numpy as np
+import ray
 import torch
 import torch.nn as nn
-import cma
-import sys
-import subprocess
-import ray
-import os
-from multiprocessing import cpu_count
+from gym.wrappers.filter_observation import FilterObservation
+from gym.wrappers.flatten_observation import FlattenObservation
+from ray.util import ActorPool
 
 from wrappers import DoneOnSuccessWrapper
-from gym.wrappers.flatten_observation import FlattenObservation
-from gym.wrappers.filter_observation import FilterObservation
+
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -69,8 +71,8 @@ class Model(nn.Module):
 class Evaluator:
     def __init__(self) -> None:
         import gym
-        from gym.envs.registration import make
         import panda_gym
+        from gym.envs.registration import make
 
         def make_env():
             return FlattenObservation(
@@ -119,10 +121,10 @@ if __name__ == "__main__":
         print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
         subprocess.Popen('caffeinate')
 
-    ray.init(address=os.environ["ip_head"])
+    ray.init(address=os.environ.get("ip_head"))
 
-    print("Nodes in the Ray cluster:")
-    print(ray.nodes())
+    print("Nodes in the Ray cluster: {}".format(len(ray.nodes())))
+    print("CPUs in the Ray cluster: {}".format(ray.cluster_resources()["CPU"]))
     print("----------------")
 
     with torch.no_grad():
@@ -132,19 +134,15 @@ if __name__ == "__main__":
 
         es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
 
-        num_cpu = cpu_count()
-        print("Using {} CPUs".format(num_cpu))
-        eval_pool = [Evaluator.remote() for _ in range(num_cpu)]
+        num_cpu = int(ray.cluster_resources()["CPU"])
+        pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
         while not es.stop():
             genotype = es.ask()
             fitness_remotes = []
 
-            for i, g in enumerate(genotype):
-                fr = eval_pool[i % len(eval_pool)].evaluate.remote(g)
-                fitness_remotes.append(fr)
-
-            fitness = ray.get(fitness_remotes)
+            fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), genotype)
+            fitness = list(fitness_remotes)
             es.tell(genotype, fitness)
             es.logger.add()
             es.disp()
