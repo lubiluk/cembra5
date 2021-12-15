@@ -1,7 +1,7 @@
 import torch
 import gym
 import panda_gym
-from neat.phenotype.feed_forward import FeedForwardNet
+from neat.nn.feed_forward import FeedForwardNetwork
 from gym.wrappers.flatten_observation import FlattenObservation
 from gym.wrappers.filter_observation import FilterObservation
 from wrappers import DoneOnSuccessWrapper
@@ -48,7 +48,7 @@ class PoleBalanceConfig:
         act_limit = env.action_space.high[0]
 
         fitness = 200
-        phenotype = FeedForwardNet(genome, self)
+        phenotype = FeedForwardNetwork(genome, self)
 
         for i in range(10):
             done = False
@@ -78,8 +78,8 @@ import gym
 import torch
 
 import neat.population as pop
-from neat.visualize import draw_net
-from neat.phenotype.feed_forward import FeedForwardNet
+from visualize import draw_net
+from neat.nn.feed_forward import FeedForwardNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ if solution is not None:
     done = False
     observation = env.reset()
 
-    phenotype = FeedForwardNet(solution, PoleBalanceConfig)
+    phenotype = FeedForwardNetwork(solution, PoleBalanceConfig)
 
     torch.save(phenotype, "data/reach_neat")
 

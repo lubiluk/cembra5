@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=hpc-test
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=24
 #SBATCH --cpus-per-task=1
