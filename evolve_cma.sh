@@ -5,7 +5,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem-per-cpu=1GB
-#SBATCH --time=24:00:00
+#SBATCH --time=5:00:00
 
 module load plgrid/tools/python/3.9
 source venv/bin/activate
