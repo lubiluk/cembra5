@@ -95,7 +95,7 @@ class Evaluator:
         with torch.no_grad():
             self.model.genotype(genotype)
             rets = []
-            for _ in range(10):
+            for _ in range(20):
                 obs = self.env.reset()
                 done = False
                 ret = 0
@@ -110,6 +110,9 @@ class Evaluator:
     def genome_shape(self):
         return self.model.genotype().shape
 
+    def state_dict(self):
+        return self.model.state_dict()
+
 
 if __name__ == "__main__":
     if 'darwin' in sys.platform:
@@ -123,14 +126,14 @@ if __name__ == "__main__":
     print("----------------")
 
     with torch.no_grad():
-        eval = Evaluator.remote()
-        genome_shape = ray.get(eval.genome_shape.remote())
+        dummy_eval = Evaluator.remote()
+        genome_shape = ray.get(dummy_eval.genome_shape.remote())
         genome = torch.zeros(genome_shape)
-        del eval
 
         es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
 
-        num_cpu = 96 # cpu_count()
+        num_cpu = cpu_count()
+        print("Using {} CPUs".format(num_cpu))
         eval_pool = [Evaluator.remote() for _ in range(num_cpu)]
 
         while not es.stop():
@@ -145,5 +148,8 @@ if __name__ == "__main__":
             es.tell(genotype, fitness)
             es.logger.add()
             es.disp()
+            best_idx = fitness.index(min(fitness))
+            state_dict = ray.get(dummy_eval.state_dict.remote())
+            torch.save(state_dict, "data/best_cma.pth")
 
         es.result_pretty()
