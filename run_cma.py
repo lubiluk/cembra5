@@ -33,7 +33,7 @@ if __name__ == "__main__":
             activation=nn.ReLU,
             act_limit=act_limit,
         )
-        model.load_state_dict(torch.load("model.pth"))
+        model.load_state_dict(torch.load("data/best_cma.pth"))
 
         for _ in range(100):
             obs = env.reset()

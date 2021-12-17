@@ -137,6 +137,7 @@ if __name__ == "__main__":
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
+        generation = 0
         while not es.stop():
             genotype = es.ask()
             fitness_remotes = []
@@ -146,8 +147,15 @@ if __name__ == "__main__":
             es.tell(genotype, fitness)
             es.logger.add()
             es.disp()
-            best_idx = fitness.index(min(fitness))
-            state_dict = ray.get(dummy_eval.state_dict.remote())
-            torch.save(state_dict, "data/best_cma.pth")
+
+            if generation % 100 == 0:
+                best_idx = fitness.index(min(fitness))
+                best_fit = ray.get(dummy_eval.evaluate.remote(genotype[best_idx]))
+                state_dict = ray.get(dummy_eval.state_dict.remote())
+                torch.save(state_dict, "data/best_cma.pth")
+                if best_fit < 0.4:
+                    break
+
+            generation += 1
 
         es.result_pretty()
