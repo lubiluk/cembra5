@@ -14,7 +14,9 @@ from wrappers import DoneOnSuccessWrapper
 def make_env():
     return FlattenObservation(
         FilterObservation(
-            DoneOnSuccessWrapper(gym.make("PandaReachDense-v2", render=True), reward_offset=0),
+            DoneOnSuccessWrapper(
+                gym.make("PandaReachDense-v2", render=True), reward_offset=0
+            ),
             filter_keys=["observation", "desired_goal"],
         )
     )
@@ -35,7 +37,8 @@ if __name__ == "__main__":
         )
         model.load_state_dict(torch.load("data/best_cma.pth"))
 
-        for _ in range(100):
+        rets = []
+        for _ in range(20):
             obs = env.reset()
             done = False
             ret = 0
@@ -43,6 +46,6 @@ if __name__ == "__main__":
                 action = model.forward(torch.from_numpy(obs)).numpy()
                 obs, rew, done, _ = env.step(action)
                 ret += rew
-                env.render()
-            print(ret)
+            rets.append(ret)
 
+        print(-(sum(rets) / len(rets)))
