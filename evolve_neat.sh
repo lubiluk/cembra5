@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=evolve-neat
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=24
