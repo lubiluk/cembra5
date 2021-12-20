@@ -150,8 +150,12 @@ if __name__ == "__main__":
             es.disp()
 
             if generation % 100 == 0:
-                best_idx = fitness.index(min(fitness))
+                best_fit = min(fitness)
+                best_idx = fitness.index(best_fit)
                 dump(genotype[best_idx], os.environ.get("$SCRATCH") + "data/best_cma_{}.pkl".format(generation))
+
+                if best_fit < 0.4:
+                    break
 
             generation += 1
 
