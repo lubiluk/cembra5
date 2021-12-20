@@ -10,6 +10,7 @@ import torch.nn as nn
 from gym.wrappers.filter_observation import FilterObservation
 from gym.wrappers.flatten_observation import FlattenObservation
 from ray.util import ActorPool
+from pickle import dump
 
 from wrappers import DoneOnSuccessWrapper
 
@@ -150,11 +151,7 @@ if __name__ == "__main__":
 
             if generation % 100 == 0:
                 best_idx = fitness.index(min(fitness))
-                best_fit = ray.get(dummy_eval.evaluate.remote(genotype[best_idx]))
-                state_dict = ray.get(dummy_eval.state_dict.remote())
-                torch.save(state_dict, "data/best_cma.pth")
-                if best_fit < 0.4:
-                    break
+                dump(genotype[best_idx], os.environ.get("$SCRATCH") + "data/best_cma_{}.pkl".format(generation))
 
             generation += 1
 

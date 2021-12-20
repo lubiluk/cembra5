@@ -4,7 +4,7 @@
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=24
-#SBATCH --mem-per-cpu=1GB
+#SBATCH --mem-per-cpu=500MB
 #SBATCH --time=24:00:00
 
 module load plgrid/tools/python/3.9
