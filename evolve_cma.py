@@ -132,6 +132,7 @@ if __name__ == "__main__":
         dummy_eval = Evaluator.remote()
         genome_shape = ray.get(dummy_eval.genome_shape.remote())
         genome = torch.zeros(genome_shape)
+        del dummy_eval
 
         es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
 
@@ -152,9 +153,9 @@ if __name__ == "__main__":
             if generation % 100 == 0:
                 best_fit = min(fitness)
                 best_idx = fitness.index(best_fit)
-                dump(genotype[best_idx], os.environ.get("$SCRATCH") + "data/best_cma_{}.pkl".format(generation))
+                dump(genotype[best_idx], os.environ.get("SCRATCH", "") + "data/best_cma_{}.pkl".format(generation))
 
-                if best_fit < 0.4:
+                if best_fit < 0.3:
                     break
 
             generation += 1
