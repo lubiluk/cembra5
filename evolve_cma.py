@@ -153,7 +153,8 @@ if __name__ == "__main__":
             if generation % 100 == 0:
                 best_fit = min(fitness)
                 best_idx = fitness.index(best_fit)
-                dump(genotype[best_idx], os.environ.get("SCRATCH", "") + "data/best_cma_{}.pkl".format(generation))
+                with open(os.environ.get("SCRATCH", "") + "data/best_cma_{}.pkl".format(generation), "wb") as f:
+                    dump(genotype[best_idx], f)
 
                 if best_fit < 0.3:
                     break
