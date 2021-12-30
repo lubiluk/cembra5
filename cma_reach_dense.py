@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import shutil
 
 import cma
 import numpy as np
@@ -14,6 +15,7 @@ from pickle import dump
 
 from wrappers import DoneOnSuccessWrapper
 
+EXP_NAME =  "cma_reach_dense"
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -126,6 +128,10 @@ if __name__ == "__main__":
         print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
         subprocess.Popen('caffeinate')
 
+    dirpath = os.environ.get("SCRATCH", "./data/") + EXP_NAME + "/"
+    shutil.rmtree(dirpath, ignore_errors=True)
+    os.makedirs(dirpath, exist_ok=True)
+
     ray.init(address=os.environ.get("ip_head"))
 
     print("Nodes in the Ray cluster: {}".format(len(ray.nodes())))
@@ -138,7 +144,7 @@ if __name__ == "__main__":
         genome = torch.zeros(genome_shape)
         del dummy_eval
 
-        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
+        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5, {"tolfun": 1e-5, "verb_filenameprefix": dirpath})
 
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
@@ -157,7 +163,7 @@ if __name__ == "__main__":
             if generation % 100 == 0:
                 best_fit = min(fitness)
                 best_idx = fitness.index(best_fit)
-                with open(os.environ.get("SCRATCH", ".") + "/data/best_cma_{}.pkl".format(generation), "wb") as f:
+                with open(dirpath + "best_genome_{}.pkl".format(generation), "wb") as f:
                     dump(genotype[best_idx], f)
 
                 if best_fit < 0.3:
