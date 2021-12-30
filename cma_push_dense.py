@@ -128,7 +128,7 @@ if __name__ == "__main__":
         print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
         subprocess.Popen('caffeinate')
 
-    dirpath = os.environ.get("SCRATCH", "./data/") + EXP_NAME + "/"
+    dirpath = os.environ.get("SCRATCH", "./data") + "/" + EXP_NAME + "/"
     shutil.rmtree(dirpath, ignore_errors=True)
     os.makedirs(dirpath, exist_ok=True)
 
