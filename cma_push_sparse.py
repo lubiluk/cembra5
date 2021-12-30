@@ -15,7 +15,7 @@ from pickle import dump
 
 from wrappers import DoneOnSuccessWrapper
 
-EXP_NAME =  "cma_reach_sparse"
+EXP_NAME =  "cma_push_sparse"
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -82,7 +82,7 @@ class Evaluator:
         def make_env():
             return FlattenObservation(
                 FilterObservation(
-                    DoneOnSuccessWrapper(gym.make("PandaReach-v2", render=self.render), reward_offset=0),
+                    DoneOnSuccessWrapper(gym.make("PandaPush-v2", render=self.render), reward_offset=0),
                     filter_keys=["observation", "desired_goal"],
                 )
             )

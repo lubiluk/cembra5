@@ -15,7 +15,7 @@ from pickle import dump
 
 from wrappers import DoneOnSuccessWrapper
 
-EXP_NAME =  "cma_reach_sparse"
+EXP_NAME =  "cma_push_dense"
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -82,7 +82,7 @@ class Evaluator:
         def make_env():
             return FlattenObservation(
                 FilterObservation(
-                    DoneOnSuccessWrapper(gym.make("PandaReach-v2", render=self.render), reward_offset=0),
+                    DoneOnSuccessWrapper(gym.make("PandaPushDense-v2", render=self.render), reward_offset=0),
                     filter_keys=["observation", "desired_goal"],
                 )
             )
@@ -101,21 +101,20 @@ class Evaluator:
     def evaluate(self, genotype):
         with torch.no_grad():
             self.model.genotype(genotype)
-            failures = 0
-            for _ in range(40):
+            rets = []
+            for _ in range(20):
                 obs = self.env.reset()
                 done = False
-
+                ret = 0
                 while not done:
                     action = self.model.forward(torch.from_numpy(obs)).numpy()
-                    obs, rew, done, info = self.env.step(action)
+                    obs, rew, done, _ = self.env.step(action)
                     if self.render:
                         self.env.render()
-                
-                if not info.get("is_success", False):
-                    failures += 1
+                    ret += rew
+                rets.append(ret)
 
-            return failures / 40
+            return -(sum(rets) / len(rets))
 
     def genome_shape(self):
         return self.model.genotype().shape
@@ -145,7 +144,7 @@ if __name__ == "__main__":
         genome = torch.zeros(genome_shape)
         del dummy_eval
 
-        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5, {"tolfun": 1e-10, "verb_filenameprefix": dirpath})
+        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5, {"tolfun": 1e-5, "verb_filenameprefix": dirpath})
 
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
