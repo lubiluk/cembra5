@@ -167,8 +167,8 @@ if __name__ == "__main__":
                 with open(dirpath + "best_genome_{}.pkl".format(generation), "wb") as f:
                     dump(genotype[best_idx], f)
 
-                if best_fit < 0.3:
-                    break
+                # if best_fit < 0.01:
+                #     break
 
             generation += 1
 
