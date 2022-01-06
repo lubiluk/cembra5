@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 
 import gym
 import panda_gym
@@ -32,12 +34,16 @@ def wrap(env):
         )
 
 if __name__ == "__main__":
+    if 'darwin' in sys.platform:
+        print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
+        subprocess.Popen('caffeinate')
+
     os.makedirs(save_path, exist_ok=True)
 
-    env = wrap(gym.make("PandaReachDense-v1"))
+    env = wrap(gym.make("PandaReachDense-v2"))
 
     ac_kwargs = dict(
-        hidden_sizes=[64, 64], activation=nn.ReLU
+        hidden_sizes=[16, 16], activation=nn.ReLU
     )
     rb_kwargs = dict(size=100_000)
 
