@@ -43,7 +43,7 @@ if __name__ == "__main__":
     env = wrap(gym.make("PandaReachDense-v2"))
 
     ac_kwargs = dict(
-        hidden_sizes=[16, 16], activation=nn.ReLU
+        hidden_sizes=[10, 10], activation=nn.ReLU
     )
     rb_kwargs = dict(size=100_000)
 
