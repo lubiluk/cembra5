@@ -6,20 +6,20 @@
 fitness_criterion     = max
 fitness_threshold     = -0.4
 pop_size              = 250
-reset_on_extinction   = 0
+reset_on_extinction   = 1
 
 [DefaultGenome]
 num_inputs              = 9
 num_hidden              = 20
 num_outputs             = 3
 initial_connection      = partial_direct 0.5
-feed_forward            = True
+feed_forward            = False
 compatibility_disjoint_coefficient    = 1.0
 compatibility_weight_coefficient      = 0.6
-conn_add_prob           = 0.2
-conn_delete_prob        = 0.2
-node_add_prob           = 0
-node_delete_prob        = 0
+conn_add_prob           = 0.4
+conn_delete_prob        = 0.4
+node_add_prob           = 0.3
+node_delete_prob        = 0.3
 activation_default      = relu
 activation_options      = relu tanh
 activation_mutate_rate  = 0.1
@@ -35,14 +35,14 @@ bias_max_value          = 1.0
 bias_min_value          = -1.0
 response_init_mean      = 1.0
 response_init_stdev     = 0.0
-response_replace_rate   = 0.0
-response_mutate_rate    = 0.0
-response_mutate_power   = 0.0
+response_replace_rate   = 0.1
+response_mutate_rate    = 0.3
+response_mutate_power   = 0.5
 response_max_value      = 1.0
 response_min_value      = -1.0
 
-weight_max_value        = 30
-weight_min_value        = -30
+weight_max_value        = 10
+weight_min_value        = -10
 weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
 weight_mutate_rate      = 0.8
@@ -59,5 +59,5 @@ species_fitness_func = max
 max_stagnation  = 20
 
 [DefaultReproduction]
-elitism            = 2
+elitism            = 5
 survival_threshold = 0.2
