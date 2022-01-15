@@ -53,7 +53,7 @@ class Evaluator:
 
             while not done:
                 act = net.activate(obs)
-                # act = np.tanh(act) * self.act_limit
+                act = np.tanh(act) * self.act_limit
                 obs, rew, done, info = self.env.step(act)
                 fitness += rew
 
