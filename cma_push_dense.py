@@ -93,7 +93,7 @@ class Evaluator:
         act_limit = self.env.action_space.high[0]
         self.model = Model(
             input_dim=obs_dim,
-            hidden_sizes=[32,32],
+            hidden_sizes=[64,64],
             out_dim=act_dim,
             activation=nn.ReLU,
             act_limit=act_limit)
