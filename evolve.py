@@ -14,7 +14,7 @@ population_size = 100
 
 def make_model():
     return nn.Sequential(
-        nn.Linear(9, 64), nn.ReLU(), nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 3)
+        nn.Linear(9, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(), nn.Linear(32, 3)
     )
 
 

@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 
-import cma
 import numpy as np
 import ray
 import torch
@@ -37,7 +36,7 @@ class Model(nn.Module):
 
     def genotype(self, g=None):
         if g is not None:
-            params = torch.clone(torch.from_numpy(g))
+            params = g
 
             for layer in self.net:
                 if not isinstance(layer, nn.Linear):
@@ -121,6 +120,31 @@ class Evaluator:
         return self.model.state_dict()
 
 
+def mutate(genome):
+    copy = genome.clone()
+    mutation_prob = 0.02
+    mutation_mag = 0.02
+    indxs = torch.rand_like(copy) < mutation_prob
+    copy[indxs] += (
+        copy[indxs] * (torch.rand_like(copy[indxs]) * 2 - 1) * mutation_mag
+    )
+
+    return copy
+
+
+def crossover(genome1, genome2):
+    copy1  = genome1.clone()
+    copy2  = genome2.clone()
+    probs = torch.rand_like(genome1) < 0.5
+    copy1[probs < 0.5] = 0
+    copy2[probs >= 0.5] = 0
+
+    return copy1 + copy2
+
+
+evaluation_runs = 10
+population_size = 100
+
 if __name__ == "__main__":
     if 'darwin' in sys.platform:
         print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
@@ -138,31 +162,24 @@ if __name__ == "__main__":
         genome = torch.zeros(genome_shape)
         del dummy_eval
 
-        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5)
-
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
-        generation = 0
-        while not es.stop():
-            genotype = es.ask()
-            fitness_remotes = []
+        population = torch.rand(population_size, genome.shape[0])
 
-            fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), genotype)
-            fitness = list(fitness_remotes)
-            es.tell(genotype, fitness)
-            es.logger.add()
-            es.disp()
+        for generation in range(1000):
+            fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), population)
+            fitness = torch.tensor(list(fitness_remotes))
 
-            if generation % 100 == 0:
-                best_fit = min(fitness)
-                best_idx = fitness.index(best_fit)
-                with open(os.environ.get("SCRATCH", ".") + "/data/best_cma_{}.pkl".format(generation), "wb") as f:
-                    dump(genotype[best_idx], f)
+            _, topind = torch.topk(fitness, 10)
+            pairind = torch.combinations(topind, r=2)
+            offspring = torch.stack([crossover(g1, g2) for g1, g2 in population[pairind]])
+            _, topind = torch.topk(fitness, 55)
+            mutants = torch.stack([mutate(g) for g in population[topind]])
+            population = torch.cat((offspring, mutants), 0)
 
-                if best_fit < 0.3:
-                    break
+            # Show the best
+            topfit, topind = torch.topk(fitness, 1)
+            print("Best fitness: {}".format(topfit.squeeze()))
+            # evaluate(population[topind.squeeze()], viz_env, render=True)
 
-            generation += 1
-
-        es.result_pretty()
