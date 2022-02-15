@@ -10,6 +10,7 @@ from gym.wrappers.filter_observation import FilterObservation
 from gym.wrappers.flatten_observation import FlattenObservation
 from ray.util import ActorPool
 from pickle import dump
+from sklearn.cluster import AgglomerativeClustering
 
 from wrappers import DoneOnSuccessWrapper
 
@@ -140,20 +141,10 @@ def mutate(genome):
     return copy
 
 
-# def crossover(genome1, genome2):
-#     copy1 = genome1.clone()
-#     copy2 = genome2.clone()
-#     probs = torch.rand_like(genome1) < 0.5
-#     copy1[probs < 0.5] = 0
-#     copy2[probs >= 0.5] = 0
-
-#     return copy1 + copy2
-
-
 evaluation_steps = 10
 evaluation_episodes = 10
 species_count = 20
-population_size = 1000
+population_size = 100
 hidden_sizes = [32, 32]
 
 # The more individuals in population, the better
@@ -165,6 +156,10 @@ def distance(genome1, genome2):
 
 
 stagnation_time = 0
+
+def extract_clusters(X, y):
+    s = np.argsort(y)
+    return np.split(X[s], np.unique(y[s], return_index=True)[1][1:])
 
 if __name__ == "__main__":
     if "darwin" in sys.platform:
@@ -202,37 +197,52 @@ if __name__ == "__main__":
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
-        population = torch.rand(population_size, genome.shape[0])
-        # klasteryzacja na gatunki K-means,
-        # sklearn.cluster.AgglomerativeClustering
-        # max osobników na gatunek
-        # policzyć fitness dla wszystkich
+        # Cluster into species
+        population = torch.rand(population_size * species_count, genome.shape[0])
+        clustering = AgglomerativeClustering(n_clusters=species_count)
+        species_indxs = clustering.fit_predict(population)
+        species = extract_clusters(population, species_indxs)
+
+        for i in range(len(species)):
+            n = len(species[i])
+            if n < population_size:
+                species[i] = torch.cat([species[i], species[i][-1].unsqueeze(dim=0).repeat(population_size - n,1)])
+            else:
+                species[i] = species[i][:population_size]
+
+            assert(len(species[i]) == population_size)
 
         for generation in range(500):
-            # pętla po gatunkach?
-            # liczymy fitness tylko dla nowych mutantów
-            fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), population)
-            fitness = torch.tensor(list(fitness_remotes))
+            all_fit = torch.tensor([])
+            for i in range(len(species)):
+                s_pop = species[i]
+                fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), s_pop)
+                fitness = torch.tensor(list(fitness_remotes))
 
-            # No crossover
-            # _, topind = torch.topk(fitness, 10)
-            # pairind = torch.combinations(topind, r=2)
-            # offspring = torch.stack([crossover(g1, g2) for g1, g2 in population[pairind]])
+                # No crossover
 
-            # Leave 10% elite unchanged
-            _, topind = torch.topk(fitness, int(population_size * 0.1)) 
-            elite = population[topind]
+                # Leave 10% elite unchanged
+                _, topind = torch.topk(fitness, int(population_size * 0.1)) 
+                elite = s_pop[topind]
 
-            # mutate to fill in the population
-            _, topind = torch.topk(fitness, population_size - len(elite)) 
-            mutants = torch.stack([mutate(g) for g in population[topind]])
+                # mutate to fill in the population
+                _, topind = torch.topk(fitness, population_size - len(elite)) 
+                mutants = torch.stack([mutate(g) for g in s_pop[topind]])
 
-            population = torch.cat((elite, mutants), 0)
-            assert(len(population) == population_size)
+                s_pop = torch.cat((elite, mutants), 0)
+                assert(len(s_pop) == population_size)
+
+                species[i] = s_pop
+                all_fit = torch.concat([all_fit, fitness])
 
             # Show the best
-            topfit, topind = torch.topk(fitness, 1)
+            topfit, topind = torch.topk(all_fit, 1)
             print("Best fitness: {}".format(topfit.squeeze()))
             # evaluate(population[topind.squeeze()], viz_env, render=True)
 
-            # Co jakiś czas zrobić reklasteryzację gatunków
+            # Every now and then reculster species
+            if generation % 100 == 0:
+                population = torch.cat(species, dim=0)
+                clustering = AgglomerativeClustering(n_clusters=species_count)
+                species_indxs = clustering.fit_predict(population)
+                species = extract_clusters(population, species_indxs)
