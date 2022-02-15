@@ -161,6 +161,22 @@ def extract_clusters(X, y):
     s = np.argsort(y)
     return np.split(X[s], np.unique(y[s], return_index=True)[1][1:])
 
+def cluster_species(population):
+    clustering = AgglomerativeClustering(n_clusters=species_count)
+    species_indxs = clustering.fit_predict(population)
+    species = extract_clusters(population, species_indxs)
+
+    for i in range(len(species)):
+        n = len(species[i])
+        if n < population_size:
+            species[i] = torch.cat([species[i], species[i][-1].unsqueeze(dim=0).repeat(population_size - n,1)])
+        else:
+            species[i] = species[i][:population_size]
+
+        assert(len(species[i]) == population_size)
+
+    return species
+
 if __name__ == "__main__":
     if "darwin" in sys.platform:
         print("Running 'caffeinate' on MacOSX to prevent the system from sleeping")
@@ -199,18 +215,7 @@ if __name__ == "__main__":
 
         # Cluster into species
         population = torch.rand(population_size * species_count, genome.shape[0])
-        clustering = AgglomerativeClustering(n_clusters=species_count)
-        species_indxs = clustering.fit_predict(population)
-        species = extract_clusters(population, species_indxs)
-
-        for i in range(len(species)):
-            n = len(species[i])
-            if n < population_size:
-                species[i] = torch.cat([species[i], species[i][-1].unsqueeze(dim=0).repeat(population_size - n,1)])
-            else:
-                species[i] = species[i][:population_size]
-
-            assert(len(species[i]) == population_size)
+        species = cluster_species(population)
 
         for generation in range(500):
             all_fit = torch.tensor([])
@@ -243,6 +248,4 @@ if __name__ == "__main__":
             # Every now and then reculster species
             if generation % 100 == 0:
                 population = torch.cat(species, dim=0)
-                clustering = AgglomerativeClustering(n_clusters=species_count)
-                species_indxs = clustering.fit_predict(population)
-                species = extract_clusters(population, species_indxs)
+                species = cluster_species(population)
