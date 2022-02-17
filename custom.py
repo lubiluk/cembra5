@@ -217,7 +217,7 @@ if __name__ == "__main__":
         population = torch.rand(population_size * species_count, genome.shape[0])
         species = cluster_species(population)
 
-        for generation in range(500):
+        for generation in range(5000):
             all_fit = torch.tensor([])
             for i in range(len(species)):
                 s_pop = species[i]
