@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import time
 
 import cma
 import numpy as np
@@ -80,7 +81,10 @@ class Evaluator:
         def make_env():
             return FlattenObservation(
                 FilterObservation(
-                    DoneOnSuccessWrapper(gym.make("PandaReachDense-v2", render=self.render), reward_offset=0),
+                    DoneOnSuccessWrapper(
+                        gym.make("PandaReachDense-v2", render=self.render),
+                        reward_offset=0,
+                    ),
                     filter_keys=["observation", "desired_goal"],
                 )
             )
@@ -94,7 +98,8 @@ class Evaluator:
             hidden_sizes=[32, 32],
             out_dim=act_dim,
             activation=nn.ReLU,
-            act_limit=act_limit)
+            act_limit=act_limit,
+        )
 
     def evaluate(self, genotype):
         with torch.no_grad():
@@ -122,9 +127,9 @@ class Evaluator:
 
 
 if __name__ == "__main__":
-    if 'darwin' in sys.platform:
-        print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
-        subprocess.Popen('caffeinate')
+    if "darwin" in sys.platform:
+        print("Running 'caffeinate' on MacOSX to prevent the system from sleeping")
+        subprocess.Popen("caffeinate")
 
     ray.init(address=os.environ.get("ip_head"))
 
@@ -145,6 +150,8 @@ if __name__ == "__main__":
 
         generation = 0
         while not es.stop():
+            time1 = time.time()
+
             genotype = es.ask()
             fitness_remotes = []
 
@@ -157,12 +164,23 @@ if __name__ == "__main__":
             if generation % 100 == 0:
                 best_fit = min(fitness)
                 best_idx = fitness.index(best_fit)
-                with open(os.environ.get("SCRATCH", ".") + "/data/best_cma_{}.pkl".format(generation), "wb") as f:
+                with open(
+                    os.environ.get("SCRATCH", ".")
+                    + "/data/best_cma_{}.pkl".format(generation),
+                    "wb",
+                ) as f:
                     dump(genotype[best_idx], f)
 
                 if best_fit < 0.3:
                     break
 
             generation += 1
+
+            time2 = time.time()
+            print(
+                "iteration time: {:.3f} ms".format(
+                    (time2 - time1) * 1000.0,
+                )
+            )
 
         es.result_pretty()
