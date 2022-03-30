@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cma_reach_sparse
+#SBATCH --job-name=cma_reach_dense
 #SBATCH --nodes=1
 #SBATCH --exclusive
 #SBATCH --tasks-per-node=1
@@ -52,4 +52,4 @@ for ((i = 1; i <= worker_num; i++)); do
     sleep 5
 done
 
-python cma_reach_sparse.py
+python cma_reach_dense.py
