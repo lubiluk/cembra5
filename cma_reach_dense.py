@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 import shutil
+import time
+import csv
 
 import cma
 import numpy as np
@@ -16,6 +18,7 @@ from pickle import dump
 from wrappers import DoneOnSuccessWrapper
 
 EXP_NAME =  "cma_reach_dense"
+NET_ARCH = [32,32]
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -93,7 +96,7 @@ class Evaluator:
         act_limit = self.env.action_space.high[0]
         self.model = Model(
             input_dim=obs_dim,
-            hidden_sizes=[32,32],
+            hidden_sizes=NET_ARCH,
             out_dim=act_dim,
             activation=nn.ReLU,
             act_limit=act_limit)
@@ -149,26 +152,41 @@ if __name__ == "__main__":
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
-        generation = 0
-        while not es.stop():
-            genotype = es.ask()
-            fitness_remotes = []
+        arch_str = "_".join([str(l) for l in NET_ARCH])
+        csv_filename = "exp_{}-net_{}-cpu_{}.csv".format(EXP_NAME, arch_str, num_cpu)
+        
+        with open(dirpath + csv_filename, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile, delimiter=' ')
+            csvwriter.writerow(['generation', 'best_fitness', 'mean_fitness', 'iteration_time_ms', 'population_size'])
+            generation = 0
+            while not es.stop():
+                time1 = time.time()
+                
+                genotype = es.ask()
+                fitness_remotes = []
 
-            fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), genotype)
-            fitness = list(fitness_remotes)
-            es.tell(genotype, fitness)
-            es.logger.add()
-            es.disp()
+                fitness_remotes = pool.map(lambda a, v: a.evaluate.remote(v), genotype)
+                fitness = list(fitness_remotes)
+                es.tell(genotype, fitness)
+                es.logger.add()
+                es.disp()
 
-            if generation % 100 == 0:
-                best_fit = min(fitness)
-                best_idx = fitness.index(best_fit)
-                with open(dirpath + "best_genome_{}.pkl".format(generation), "wb") as f:
-                    dump(genotype[best_idx], f)
+                if generation % 100 == 0:
+                    best_fit = min(fitness)
+                    best_idx = fitness.index(best_fit)
+                    with open(dirpath + "best_genome_{}.pkl".format(generation), "wb") as f:
+                        dump(genotype[best_idx], f)
 
-                if best_fit < 0.3:
-                    break
+                    if best_fit < 0.3:
+                        break
 
-            generation += 1
+
+                time2 = time.time()
+                time_diff = (time2 - time1) * 1000.0
+                csvwriter.writerow([generation, best_fit, np.mean(fitness), time_diff, len(genotype)])
+                csvfile.flush()
+
+                generation += 1
+
 
         es.result_pretty()
