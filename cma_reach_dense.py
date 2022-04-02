@@ -17,8 +17,9 @@ from pickle import dump
 
 from wrappers import DoneOnSuccessWrapper
 
-EXP_NAME =  "cma_reach_dense"
-NET_ARCH = [32,32]
+EXP_NAME = "cma_reach_dense"
+NET_ARCH = [32, 32]
+
 
 class Model(nn.Module):
     def __init__(self, input_dim, hidden_sizes, out_dim, activation, act_limit):
@@ -85,7 +86,10 @@ class Evaluator:
         def make_env():
             return FlattenObservation(
                 FilterObservation(
-                    DoneOnSuccessWrapper(gym.make("PandaReachDense-v2", render=self.render), reward_offset=0),
+                    DoneOnSuccessWrapper(
+                        gym.make("PandaReachDense-v2", render=self.render),
+                        reward_offset=0,
+                    ),
                     filter_keys=["observation", "desired_goal"],
                 )
             )
@@ -99,7 +103,8 @@ class Evaluator:
             hidden_sizes=NET_ARCH,
             out_dim=act_dim,
             activation=nn.ReLU,
-            act_limit=act_limit)
+            act_limit=act_limit,
+        )
 
     def evaluate(self, genotype):
         with torch.no_grad():
@@ -127,9 +132,9 @@ class Evaluator:
 
 
 if __name__ == "__main__":
-    if 'darwin' in sys.platform:
-        print('Running \'caffeinate\' on MacOSX to prevent the system from sleeping')
-        subprocess.Popen('caffeinate')
+    if "darwin" in sys.platform:
+        print("Running 'caffeinate' on MacOSX to prevent the system from sleeping")
+        subprocess.Popen("caffeinate")
 
     dirpath = os.environ.get("SCRATCH", "./data") + "/" + EXP_NAME + "/"
     shutil.rmtree(dirpath, ignore_errors=True)
@@ -147,21 +152,33 @@ if __name__ == "__main__":
         genome = torch.zeros(genome_shape)
         del dummy_eval
 
-        es = cma.CMAEvolutionStrategy(genome.numpy(), 0.5, {"tolfun": 1e-5, "verb_filenameprefix": dirpath})
+        es = cma.CMAEvolutionStrategy(
+            genome.numpy(),
+            0.5,
+            {"tolfun": 1e-5, "verb_filenameprefix": dirpath, "popsize_factor": 4},
+        )
 
         num_cpu = int(ray.cluster_resources()["CPU"])
         pool = ActorPool([Evaluator.remote() for _ in range(num_cpu)])
 
         arch_str = "_".join([str(l) for l in NET_ARCH])
         csv_filename = "exp_{}-net_{}-cpu_{}.csv".format(EXP_NAME, arch_str, num_cpu)
-        
-        with open(dirpath + csv_filename, 'w', newline='') as csvfile:
-            csvwriter = csv.writer(csvfile, delimiter=' ')
-            csvwriter.writerow(['generation', 'best_fitness', 'mean_fitness', 'iteration_time_ms', 'population_size'])
+
+        with open(dirpath + csv_filename, "w", newline="") as csvfile:
+            csvwriter = csv.writer(csvfile, delimiter=" ")
+            csvwriter.writerow(
+                [
+                    "generation",
+                    "best_fitness",
+                    "mean_fitness",
+                    "iteration_time_ms",
+                    "population_size",
+                ]
+            )
             generation = 0
             while not es.stop():
                 time1 = time.time()
-                
+
                 genotype = es.ask()
                 fitness_remotes = []
 
@@ -174,19 +191,21 @@ if __name__ == "__main__":
                 if generation % 100 == 0:
                     best_fit = min(fitness)
                     best_idx = fitness.index(best_fit)
-                    with open(dirpath + "best_genome_{}.pkl".format(generation), "wb") as f:
+                    with open(
+                        dirpath + "best_genome_{}.pkl".format(generation), "wb"
+                    ) as f:
                         dump(genotype[best_idx], f)
 
                     if best_fit < 0.3:
                         break
 
-
                 time2 = time.time()
                 time_diff = (time2 - time1) * 1000.0
-                csvwriter.writerow([generation, best_fit, np.mean(fitness), time_diff, len(genotype)])
+                csvwriter.writerow(
+                    [generation, best_fit, np.mean(fitness), time_diff, len(genotype)]
+                )
                 csvfile.flush()
 
                 generation += 1
-
 
         es.result_pretty()
