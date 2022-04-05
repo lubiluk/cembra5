@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=cma_reach_dense
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --exclusive
-#SBATCH --tasks-per-node=2
+#SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem-per-cpu=512MB
 #SBATCH --time=5:00:00
